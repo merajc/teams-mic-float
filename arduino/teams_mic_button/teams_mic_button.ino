@@ -19,7 +19,14 @@ const byte MAX7219_REG_SCANLIMIT   = 0x0B;
 const byte MAX7219_REG_SHUTDOWN    = 0x0C;
 const byte MAX7219_REG_DISPLAYTEST = 0x0F;
 
+// --- Theme Selection ---
+// 1 = Theme 1: Retro Microphone (Live) vs Slashed Microphone (Muted)
+// 2 = Theme 2: Status Letters ("ON" vs "M")
+// 3 = Theme 3: Checkmark (Live) vs Giant "X" (Muted) [ACTIVE]
+#define THEME_SELECTION 3
+
 // --- Bitmaps (8x8) ---
+#if THEME_SELECTION == 1
 // Theme 1: Retro Microphone (Live) vs Slashed Microphone (Muted)
 const byte BITMAP_UNMUTED[8] = {
   B00111100, // . . ■ ■ ■ ■ . .  (mic top)
@@ -42,6 +49,55 @@ const byte BITMAP_MUTED[8] = {
   B00011010, // . . . ■ ■ . ■ .       (\)
   B01111111  // . ■ ■ ■ ■ ■ ■ ■  (slash end)
 };
+
+#elif THEME_SELECTION == 2
+// Theme 2: "ON" vs "M"
+const byte BITMAP_UNMUTED[8] = {
+  B01101001, // . ■ ■ . ■ . . ■
+  B10011101, // ■ . . ■ ■ ■ . ■
+  B10011011, // ■ . . ■ ■ . ■ ■
+  B10011011, // ■ . . ■ ■ . ■ ■
+  B10011001, // ■ . . ■ ■ . . ■
+  B01101001, // . ■ ■ . ■ . . ■
+  B00000000, // . . . . . . . .
+  B00000000  // . . . . . . . .
+};
+
+const byte BITMAP_MUTED[8] = {
+  B10000001, // ■ . . . . . . ■
+  B11000011, // ■ ■ . . . . ■ ■
+  B10100101, // ■ . ■ . . ■ . ■
+  B10011001, // ■ . . ■ ■ . . ■
+  B10000001, // ■ . . . . . . ■
+  B10000001, // ■ . . . . . . ■
+  B10000001, // ■ . . . . . . ■
+  B00000000  // . . . . . . . .
+};
+
+#else
+// Theme 3: Checkmark (Live) vs Giant "X" (Muted)
+const byte BITMAP_UNMUTED[8] = {
+  B00000001, // . . . . . . . ■
+  B00000011, // . . . . . . ■ ■
+  B00000110, // . . . . . ■ ■ .
+  B10001100, // ■ . . . ■ ■ . .
+  B11011000, // ■ ■ . ■ ■ . . .
+  B01110000, // . ■ ■ ■ . . . .
+  B00100000, // . . ■ . . . . .
+  B00000000  // . . . . . . . .
+};
+
+const byte BITMAP_MUTED[8] = {
+  B11000011, // ■ ■ . . . . ■ ■
+  B01100110, // . ■ ■ . . ■ ■ .
+  B00111100, // . . ■ ■ ■ ■ . .
+  B00011000, // . . . ■ ■ . . .
+  B00011000, // . . . ■ ■ . . .
+  B00111100, // . . ■ ■ ■ ■ . .
+  B01100110, // . ■ ■ . . ■ ■ .
+  B11000011  // ■ ■ . . . . ■ ■
+};
+#endif
 
 // Idle / Offline: subtle 2x2 standby dot in the center
 const byte BITMAP_IDLE[8] = {
