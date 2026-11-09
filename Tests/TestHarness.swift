@@ -150,6 +150,10 @@ struct TestHarness {
             afterClear.windowPosition() == StoredWindowPosition(x: 42, y: 84),
             "window position survives token clear"
         )
+        t.expect(afterClear.floatingWindowMode == .hidden, "default floatingWindowMode is hidden")
+        try afterClear.setFloatingWindowMode(.always)
+        let reloadedMode = try ConfigStore(url: url)
+        t.expect(reloadedMode.floatingWindowMode == .always, "floatingWindowMode persists")
 
         t.expectThrows("rejects token containing newline") {
             try afterClear.setToken("bad\nvalue")

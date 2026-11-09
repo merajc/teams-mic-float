@@ -60,14 +60,16 @@ to the app. It connects automatically; no restart is required.
 
 ## Usage
 
-- **Click** the floating button to toggle the Teams microphone.
+- **Menu Bar Item ("Mac Taskbar")**: Look for the microphone icon in your Mac's top menu bar. It provides real-time color feedback (green = unmuted, red = muted, grey = idle/no call). Clicking it lets you toggle mute, refresh Teams detection, monitor Arduino status, or quit.
+- **Floating Button Visibility**: Under the menu-bar mic icon → **Floating Button**, choose your preferred mode:
+  - **Hide (Menu Bar Only)**: Completely hides the on-screen circle button, running unobtrusively in your Mac menu bar.
+  - **Show During Calls Only**: Automatically shows the floating button only while an active Teams meeting is underway, and hides it when the call ends.
+  - **Show Always**: Keeps the circular floating button on-screen across spaces.
 - **Hardware button**: Press the button on the attached Arduino (or external button on Pin 2) to toggle the microphone via USB serial.
-- **Drag** it to reposition.
-- **Right-click** for the context menu.
-- Menu-bar mic icon provides status, mute toggle, refresh, Arduino connection status, permission help, and
-  Quit.
+- **Drag** the floating button to reposition it when visible.
+- **Right-click** the floating button for the context menu.
 - Mute or unmute from Teams’ native UI or its `Shift+Cmd+M` shortcut; the
-  floating button follows within roughly 150 ms.
+  floating button and menu bar icon follow within roughly 150 ms.
 
 ## Activate in future
 

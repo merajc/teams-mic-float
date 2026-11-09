@@ -48,8 +48,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.panelController = panelController
 
-        let toastController = ToastController(anchor: { [weak panelController] in
-            panelController?.panel.frame
+        let toastController = ToastController(anchor: { [weak self, weak panelController] in
+            if panelController?.isVisible == true {
+                return panelController?.panel.frame
+            }
+            if let window = self?.statusItem?.button?.window {
+                return window.frame
+            }
+            return panelController?.panel.frame
         })
         self.toastController = toastController
 
@@ -85,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         configureStatusItem()
-        panelController.show()
+        updatePanelVisibility(state: controller.state)
         apply(controller.state)
         controller.start()
         arduinoController.start()
@@ -139,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func apply(_ state: ClientState) {
         panelController?.update(state: state)
+        updatePanelVisibility(state: state)
         updateStatusItem(state: state)
         statusItem?.menu = buildMenu(state: state)
         lastVisual = VisualState.from(state)
@@ -239,6 +246,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        let windowMenu = NSMenu()
+        windowMenu.autoenablesItems = false
+
+        let hiddenItem = NSMenuItem(
+            title: "Hide (Menu Bar Only)",
+            action: #selector(setWindowModeHidden),
+            keyEquivalent: ""
+        )
+        hiddenItem.target = self
+        hiddenItem.state = (config?.floatingWindowMode == .hidden) ? .on : .off
+        windowMenu.addItem(hiddenItem)
+
+        let inCallItem = NSMenuItem(
+            title: "Show During Calls Only",
+            action: #selector(setWindowModeInCall),
+            keyEquivalent: ""
+        )
+        inCallItem.target = self
+        inCallItem.state = (config?.floatingWindowMode == .inCallOnly) ? .on : .off
+        windowMenu.addItem(inCallItem)
+
+        let alwaysItem = NSMenuItem(
+            title: "Show Always",
+            action: #selector(setWindowModeAlways),
+            keyEquivalent: ""
+        )
+        alwaysItem.target = self
+        alwaysItem.state = (config?.floatingWindowMode == .always) ? .on : .off
+        windowMenu.addItem(alwaysItem)
+
+        let windowParent = NSMenuItem(
+            title: "Floating Button",
+            action: nil,
+            keyEquivalent: ""
+        )
+        windowParent.submenu = windowMenu
+        menu.addItem(windowParent)
+
+        menu.addItem(.separator())
+
         let accessibility = NSMenuItem(
             title: "Accessibility Settings…",
             action: #selector(openAccessibility),
@@ -299,6 +346,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Menu actions
+
+    private func updatePanelVisibility(state: ClientState) {
+        guard let panelController, let config else { return }
+        switch config.floatingWindowMode {
+        case .hidden:
+            panelController.hide()
+        case .inCallOnly:
+            if state.inMeeting {
+                panelController.show()
+            } else {
+                panelController.hide()
+            }
+        case .always:
+            panelController.show()
+        }
+    }
+
+    @objc private func setWindowModeHidden() {
+        setFloatingWindowMode(.hidden)
+    }
+
+    @objc private func setWindowModeInCall() {
+        setFloatingWindowMode(.inCallOnly)
+    }
+
+    @objc private func setWindowModeAlways() {
+        setFloatingWindowMode(.always)
+    }
+
+    private func setFloatingWindowMode(_ mode: FloatingWindowMode) {
+        do {
+            try config?.setFloatingWindowMode(mode)
+            if let state = controller?.state {
+                updatePanelVisibility(state: state)
+                statusItem?.menu = buildMenu(state: state)
+            }
+        } catch {
+            Log.warn("Could not save floating window mode: \(error.localizedDescription)")
+        }
+    }
 
     @objc private func primaryFromMenu() {
         controller?.requestPrimaryAction()

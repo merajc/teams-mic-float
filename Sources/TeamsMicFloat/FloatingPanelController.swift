@@ -66,9 +66,22 @@ final class FloatingPanelController {
         placeWindow()
     }
 
+    var isVisible: Bool {
+        panel.isVisible
+    }
+
     func show() {
-        panel.orderFrontRegardless()
-        Log.info("Floating panel shown at \(NSStringFromPoint(panel.frame.origin))")
+        if !panel.isVisible {
+            panel.orderFrontRegardless()
+            Log.info("Floating panel shown at \(NSStringFromPoint(panel.frame.origin))")
+        }
+    }
+
+    func hide() {
+        if panel.isVisible {
+            panel.orderOut(nil)
+            Log.info("Floating panel hidden")
+        }
     }
 
     func update(state: ClientState) {

@@ -5,11 +5,18 @@ struct StoredWindowPosition: Codable, Equatable {
     var y: Int
 }
 
+enum FloatingWindowMode: String, Codable, Equatable {
+    case hidden
+    case inCallOnly
+    case always
+}
+
 struct AppConfig: Codable {
     var version: Int = 1
     var token: String?
     var autoPair: Bool = true
     var window: StoredWindowPosition?
+    var floatingWindowMode: FloatingWindowMode = .hidden
     var updatedAt: String?
 
     init() {}
@@ -19,6 +26,7 @@ struct AppConfig: Codable {
         case token
         case autoPair
         case window
+        case floatingWindowMode
         case updatedAt
     }
 
@@ -28,6 +36,7 @@ struct AppConfig: Codable {
         token = try? container.decodeIfPresent(String.self, forKey: .token)
         autoPair = (try? container.decodeIfPresent(Bool.self, forKey: .autoPair)) ?? true
         window = try? container.decodeIfPresent(StoredWindowPosition.self, forKey: .window)
+        floatingWindowMode = (try? container.decodeIfPresent(FloatingWindowMode.self, forKey: .floatingWindowMode)) ?? .hidden
         updatedAt = try? container.decodeIfPresent(String.self, forKey: .updatedAt)
     }
 }
@@ -93,6 +102,19 @@ final class ConfigStore {
         lock.lock()
         defer { lock.unlock() }
         return config.window
+    }
+
+    var floatingWindowMode: FloatingWindowMode {
+        lock.lock()
+        defer { lock.unlock() }
+        return config.floatingWindowMode
+    }
+
+    func setFloatingWindowMode(_ mode: FloatingWindowMode) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        config.floatingWindowMode = mode
+        try saveLocked()
     }
 
     func setToken(_ token: String) throws {
