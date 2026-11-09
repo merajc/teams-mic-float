@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import ServiceManagement
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -70,6 +71,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor [weak self] in
                 if let state = self?.controller?.state {
                     self?.statusItem?.menu = self?.buildMenu(state: state)
+                }
+            }
+        }
+        arduinoController.onConnected = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, let state = self.controller?.state else { return }
+                if state.inMeeting {
+                    self.arduinoController?.send(state.muted ? "MUTED" : "UNMUTED")
+                } else {
+                    self.arduinoController?.send("OFF")
                 }
             }
         }
@@ -327,15 +338,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         if let arduino = arduinoController {
+            let statusText = arduino.isConnected
+                ? "🟢 Arduino: Connected (\(arduino.portName ?? "USB"))"
+                : "🔴 Arduino: Disconnected"
             let arduinoItem = NSMenuItem(
-                title: arduino.statusDescription,
+                title: statusText,
                 action: nil,
                 keyEquivalent: ""
             )
             arduinoItem.isEnabled = false
             menu.addItem(arduinoItem)
+
+            let reconnectItem = NSMenuItem(
+                title: "Reconnect Arduino",
+                action: #selector(reconnectArduino),
+                keyEquivalent: ""
+            )
+            reconnectItem.target = self
+            menu.addItem(reconnectItem)
+
+            let diagItem = NSMenuItem(
+                title: "Arduino Diagnostics…",
+                action: #selector(showArduinoDiagnostics),
+                keyEquivalent: ""
+            )
+            diagItem.target = self
+            menu.addItem(diagItem)
             menu.addItem(.separator())
         }
+
+        let startAtLoginItem = NSMenuItem(
+            title: "Launch at Login",
+            action: #selector(toggleStartAtLogin),
+            keyEquivalent: ""
+        )
+        startAtLoginItem.target = self
+        startAtLoginItem.state = isStartAtLoginEnabled ? .on : .off
+        menu.addItem(startAtLoginItem)
+        menu.addItem(.separator())
+
         let quit = NSMenuItem(
             title: "Quit Teams Mic Float",
             action: #selector(quit),
@@ -429,6 +470,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             level: .info,
             duration: 20
         )
+    }
+
+    @objc private func reconnectArduino() {
+        Log.info("Manual Arduino reconnect requested from menu")
+        arduinoController?.reconnect()
+    }
+
+    @objc private func showArduinoDiagnostics() {
+        guard let arduino = arduinoController else { return }
+        arduino.ping()
+
+        let alert = NSAlert()
+        alert.messageText = "Arduino Hardware Diagnostics"
+        var lines: [String] = []
+        for (key, val) in arduino.diagnostics.sorted(by: { $0.key < $1.key }) {
+            lines.append("• \(key): \(val)")
+        }
+        lines.append("")
+        lines.append("Hardware Pins:")
+        lines.append("• MAX7219 DIN = Pin 8 | CS = Pin 9 | CLK = Pin 10")
+        lines.append("• Tactile Button = Pin 2 to GND (INPUT_PULLUP, <15ms)")
+        lines.append("")
+        lines.append("A PING was sent to test roundtrip communication.")
+        alert.informativeText = lines.joined(separator: "\n")
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Reconnect Now")
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if response == .alertSecondButtonReturn {
+            reconnectArduino()
+        }
+    }
+
+    private var isStartAtLoginEnabled: Bool {
+        if #available(macOS 13.0, *) {
+            return SMAppService.mainApp.status == .enabled
+        }
+        return false
+    }
+
+    @objc private func toggleStartAtLogin() {
+        if #available(macOS 13.0, *) {
+            do {
+                if SMAppService.mainApp.status == .enabled {
+                    try SMAppService.mainApp.unregister()
+                    Log.info("Unregistered from Launch at Login")
+                } else {
+                    try SMAppService.mainApp.register()
+                    Log.info("Registered for Launch at Login")
+                }
+                if let state = controller?.state {
+                    statusItem?.menu = buildMenu(state: state)
+                }
+            } catch {
+                Log.warn("Failed to toggle Launch at Login: \(error.localizedDescription)")
+                toastController?.show(
+                    title: "Launch at Login",
+                    message: "You can also manage login items in System Settings → General → Login Items.",
+                    level: .info
+                )
+            }
+        }
     }
 
     @objc private func quit() {

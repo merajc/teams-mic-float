@@ -7,6 +7,7 @@ import Foundation
 final class ArduinoSerialController: @unchecked Sendable {
     var onToggle: (@Sendable () -> Void)?
     var onStatusChanged: (@Sendable (String) -> Void)?
+    var onConnected: (@Sendable () -> Void)?
 
     private let queue = DispatchQueue(
         label: "com.local.teamsmicfloat.arduino",
@@ -20,6 +21,7 @@ final class ArduinoSerialController: @unchecked Sendable {
     private var currentPort: String?
     private var connectedAt: Date?
     private var lastToggleTime = Date.distantPast
+    private var lastPongTime: Date?
     private var lineBuffer = Data()
 
     /// Settle period after DTR reset upon opening port before processing toggle events
@@ -35,8 +37,25 @@ final class ArduinoSerialController: @unchecked Sendable {
         }
     }
 
+    var portName: String? {
+        guard let currentPort else { return nil }
+        return URL(fileURLWithPath: currentPort).lastPathComponent
+    }
+
     var isConnected: Bool {
         return fd != nil
+    }
+
+    var diagnostics: [String: String] {
+        var info: [String: String] = [:]
+        info["Status"] = isConnected ? "Connected" : "Disconnected (reconnect polling every 3s)"
+        info["Port"] = currentPort ?? "None found"
+        info["Baud Rate"] = "115200"
+        info["Connected Since"] = connectedAt != nil ? ISO8601DateFormatter().string(from: connectedAt!) : "N/A"
+        info["Last Button Click"] = lastToggleTime != .distantPast ? ISO8601DateFormatter().string(from: lastToggleTime) : "None recorded"
+        info["Last Pong Response"] = lastPongTime != nil ? ISO8601DateFormatter().string(from: lastPongTime!) : "No ping sent yet"
+        info["Auto-reconnect"] = running ? "Active" : "Stopped"
+        return info
     }
 
     // MARK: - Lifecycle
@@ -66,6 +85,10 @@ final class ArduinoSerialController: @unchecked Sendable {
         }
     }
 
+    func ping() {
+        send("PING")
+    }
+
     func send(_ command: String) {
         queue.async {
             guard let fd = self.fd else { return }
@@ -79,6 +102,12 @@ final class ArduinoSerialController: @unchecked Sendable {
                     if result > 0 {
                         written += result
                     } else {
+                        let err = errno
+                        if err != EAGAIN && err != EWOULDBLOCK {
+                            Log.warn("Arduino write failed (errno \(err)); disconnecting")
+                            self.disconnect()
+                            self.scheduleReconnect()
+                        }
                         break
                     }
                 }
@@ -149,6 +178,15 @@ final class ArduinoSerialController: @unchecked Sendable {
 
         Log.info("Connected to Arduino on \(port) @ 115200 baud")
         notifyStatus(statusDescription)
+
+        // After settle duration, notify that connection is settled and ready for initial state push
+        self.queue.asyncAfter(deadline: .now() + self.settleDuration) { [weak self] in
+            guard let self, self.fd != nil else { return }
+            let handler = self.onConnected
+            DispatchQueue.main.async {
+                handler?()
+            }
+        }
 
         let source = DispatchSource.makeReadSource(fileDescriptor: rawFd, queue: queue)
         source.setEventHandler { [weak self] in
@@ -240,6 +278,12 @@ final class ArduinoSerialController: @unchecked Sendable {
 
     private func handleLine(_ line: String) {
         Log.debug("Arduino <<< \(line)")
+
+        if line == "PONG" {
+            lastPongTime = Date()
+            Log.info("Arduino responded to PING: PONG")
+            return
+        }
 
         // Ignore messages during the settle window (initial DTR reboot)
         if let connected = connectedAt, Date().timeIntervalSince(connected) < settleDuration {
