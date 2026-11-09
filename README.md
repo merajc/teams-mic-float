@@ -205,7 +205,7 @@ Run the native test harness:
 ./scripts/run_tests.sh
 ```
 
-All 69 checks run dependency-free and validate:
+All 80 checks run dependency-free and validate:
 - State machine transitions & visual mappings.
 - Teams AX DOM identifier and title parsing.
 - Configuration persistence, security permissions (`0600`), and auto-healing.

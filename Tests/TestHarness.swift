@@ -220,6 +220,24 @@ struct TestHarness {
             title: "Mute mic",
             description: "Mute mic"
         ), "AX microphone label fallback matches")
+        t.expect(TeamsAccessibilityMatcher.isMicrophoneElement(
+            role: "AXButton",
+            domID: "",
+            title: "Mute microphone",
+            description: "Mute microphone"
+        ), "AX microphone full label matches")
+        t.expect(TeamsAccessibilityMatcher.isMicrophoneElement(
+            role: "AXPopUpButton",
+            domID: "",
+            title: "Mute (⌘+Shift+M)",
+            description: ""
+        ), "AX microphone shortcut label matches")
+        t.expect(!TeamsAccessibilityMatcher.isMicrophoneElement(
+            role: "AXButton",
+            domID: "",
+            title: "Mute chat",
+            description: "Mute chat notifications"
+        ), "AX mute chat is excluded")
         t.expect(TeamsAccessibilityMatcher.isMuted(
             title: "Unmute mic",
             description: "Unmute mic"
@@ -228,6 +246,22 @@ struct TestHarness {
             title: "Mute mic",
             description: "Mute mic"
         ) == false, "Mute label means currently unmuted")
+        t.expect(TeamsAccessibilityMatcher.isMuted(
+            title: "Mute microphone",
+            description: "Mute microphone"
+        ) == false, "Mute microphone means currently unmuted")
+        t.expect(TeamsAccessibilityMatcher.isMuted(
+            title: "Unmute microphone",
+            description: "Unmute microphone"
+        ) == true, "Unmute microphone means currently muted")
+        t.expect(TeamsAccessibilityMatcher.isMuted(
+            title: "Turn off microphone",
+            description: ""
+        ) == false, "Turn off microphone means currently unmuted")
+        t.expect(TeamsAccessibilityMatcher.isMuted(
+            title: "Turn on microphone",
+            description: ""
+        ) == true, "Turn on microphone means currently muted")
         t.expect(TeamsAccessibilityMatcher.isMuted(
             title: "Mic",
             description: "Mic"
@@ -240,6 +274,22 @@ struct TestHarness {
             title: "Chat | Dis-Chem Pharmacies",
             subrole: "AXStandardWindow"
         ), "chat window is not a meeting")
+        t.expect(TeamsAccessibilityMatcher.isMeetingWindow(
+            title: "Andre Schroder | Microsoft Teams",
+            subrole: "AXStandardWindow"
+        ), "direct 1:1 call window matches")
+        t.expect(TeamsAccessibilityMatcher.isMeetingWindow(
+            title: "Calling Andre Schroder...",
+            subrole: "AXStandardWindow"
+        ), "dialing window matches")
+        t.expect(TeamsAccessibilityMatcher.isMeetingWindow(
+            title: "Sprint Planning | Microsoft Teams",
+            subrole: "AXStandardWindow"
+        ), "calendar meeting with custom subject matches")
+        t.expect(!TeamsAccessibilityMatcher.isMeetingWindow(
+            title: "Chat | Andre Schroder | Dis-Chem Pharmacies | user@example.com",
+            subrole: "AXStandardWindow"
+        ), "main chat window tab is not treated as a call window fallback")
 
         t.expect(VisualState.muted.label == "MUTED", "muted label")
         t.expect(VisualState.unmuted.label == "UNMUTED", "unmuted label")

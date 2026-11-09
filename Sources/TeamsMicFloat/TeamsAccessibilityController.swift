@@ -181,19 +181,28 @@ final class TeamsAccessibilityController: @unchecked Sendable {
         let windows = windowElements(for: appElement)
 
         // Fast path: the control we found last time usually stays valid across
-        // mute changes.  Verify that its meeting window still exists.
+        // mute changes.  Verify that its element and window still exist.
         if let microphone = microphoneElement {
-            if let rawWindow = value(microphone, kAXWindowAttribute),
+            if isElementValid(microphone),
+               let rawWindow = value(microphone, kAXWindowAttribute),
                let window = axElement(rawWindow),
-               isMeetingWindow(window) {
+               isElementValid(window) {
                 applyState(microphone: microphone)
                 return
             }
             microphoneElement = nil
         }
 
-        let meetingWindows = windows.filter { isMeetingWindow($0) }
-        for window in meetingWindows {
+        // Search windows for the microphone button. Prioritize likely call or
+        // meeting windows, but check all windows (the call may be embedded in
+        // the main window or in a dedicated 1:1 call window).
+        let orderedWindows = windows.sorted { (w1, w2) -> Bool in
+            let m1 = isMeetingWindow(w1)
+            let m2 = isMeetingWindow(w2)
+            return m1 && !m2
+        }
+
+        for window in orderedWindows {
             if let microphone = findMicrophoneButton(in: window) {
                 microphoneElement = microphone
                 applyState(microphone: microphone)
@@ -201,6 +210,7 @@ final class TeamsAccessibilityController: @unchecked Sendable {
             }
         }
 
+        let meetingWindows = windows.filter { isMeetingWindow($0) }
         if !meetingWindows.isEmpty {
             // A call exists but its control bar is not currently exposed.  This
             // usually means the meeting window is minimized or on another Space.
@@ -308,23 +318,12 @@ final class TeamsAccessibilityController: @unchecked Sendable {
     }
 
     private func microphoneMutedState(_ microphone: AXUIElement) -> Bool? {
-        let values = [
-            string(microphone, kAXTitleAttribute),
-            string(microphone, kAXDescriptionAttribute),
-            string(microphone, kAXHelpAttribute),
-            string(microphone, kAXValueAttribute),
-        ]
-        for raw in values {
-            let text = raw.lowercased()
-            if text.contains("unmute") {
-                // The action offered is "Unmute", so the mic is currently muted.
-                return true
-            }
-            if text.contains("mute mic") || text == "mute" {
-                return false
-            }
-        }
-        return nil
+        TeamsAccessibilityMatcher.isMuted(
+            title: string(microphone, kAXTitleAttribute),
+            description: string(microphone, kAXDescriptionAttribute),
+            help: string(microphone, kAXHelpAttribute),
+            value: string(microphone, kAXValueAttribute)
+        )
     }
 
     private func publish(_ newState: ClientState) {
@@ -365,58 +364,88 @@ final class TeamsAccessibilityController: @unchecked Sendable {
     }
 
     private func windowElements(for app: AXUIElement) -> [AXUIElement] {
-        if let windows = value(app, kAXWindowsAttribute) as? [AXUIElement],
-           !windows.isEmpty {
-            return windows
+        var result: [AXUIElement] = []
+        var seen = Set<CFHashCode>()
+
+        func add(_ elem: AXUIElement?) {
+            guard let elem else { return }
+            let hash = CFHash(elem)
+            if !seen.contains(hash) {
+                seen.insert(hash)
+                result.append(elem)
+            }
         }
-        return children(app).filter {
-            string($0, kAXRoleAttribute) == "AXWindow"
+
+        if let windows = value(app, kAXWindowsAttribute) as? [AXUIElement] {
+            for w in windows { add(w) }
         }
+        if let raw = value(app, kAXMainWindowAttribute), let mw = axElement(raw) {
+            add(mw)
+        }
+        if let raw = value(app, kAXFocusedWindowAttribute), let fw = axElement(raw) {
+            add(fw)
+        }
+        for child in children(app) {
+            if string(child, kAXRoleAttribute) == "AXWindow" {
+                add(child)
+            }
+        }
+        return result
     }
 
     private func isMeetingWindow(_ window: AXUIElement) -> Bool {
-        let title = string(window, kAXTitleAttribute).lowercased()
+        let title = string(window, kAXTitleAttribute)
         let subrole = string(window, kAXSubroleAttribute)
-        if subrole == "AXSystemDialog" {
-            return true
-        }
-        return title.contains("meeting")
-            || title.contains("call")
-            || title.contains("meet now")
-            || title.contains("meeting compact view")
+        return TeamsAccessibilityMatcher.isMeetingWindow(title: title, subrole: subrole)
     }
 
     private func findMicrophoneButton(in root: AXUIElement) -> AXUIElement? {
-        var stack: [AXUIElement] = [root]
+        var queue: [AXUIElement] = [root]
+        var head = 0
         var visited = Set<CFHashCode>()
-        var inspected = 0
 
-        while let element = stack.popLast() {
-            inspected += 1
-            if inspected > 5000 { break }
+        while head < queue.count {
+            let element = queue[head]
+            head += 1
+            if head > 2500 { break }
+
             let hash = CFHash(element)
             if visited.contains(hash) { continue }
             visited.insert(hash)
 
-            if string(element, "AXDOMIdentifier") == "microphone-button" {
+            let domID = string(element, "AXDOMIdentifier")
+            let identifier = string(element, kAXIdentifierAttribute)
+            let role = string(element, kAXRoleAttribute)
+            let title = string(element, kAXTitleAttribute)
+            let description = string(element, kAXDescriptionAttribute)
+            let help = string(element, kAXHelpAttribute)
+
+            if TeamsAccessibilityMatcher.isMicrophoneElement(
+                role: role,
+                domID: domID,
+                title: title,
+                description: description,
+                help: help,
+                identifier: identifier
+            ) {
                 return element
             }
 
-            let role = string(element, kAXRoleAttribute)
-            if role == "AXButton" {
-                let title = string(element, kAXTitleAttribute)
-                let description = string(element, kAXDescriptionAttribute)
-                let combined = (title + " " + description).lowercased()
-                if combined.contains("mute mic") || combined.contains("unmute mic") {
-                    return element
-                }
-            }
-
             for child in children(element) {
-                stack.append(child)
+                queue.append(child)
             }
         }
         return nil
+    }
+
+    private func isElementValid(_ element: AXUIElement) -> Bool {
+        var role: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(
+            element,
+            kAXRoleAttribute as CFString,
+            &role
+        )
+        return err == .success && role != nil
     }
 
     private func value(_ element: AXUIElement, _ attribute: String) -> AnyObject? {
@@ -449,20 +478,84 @@ final class TeamsAccessibilityController: @unchecked Sendable {
 // MARK: - Pure matching helpers for tests
 
 enum TeamsAccessibilityMatcher {
-    static func isMicrophoneElement(role: String, domID: String, title: String, description: String) -> Bool {
-        if domID == "microphone-button" { return true }
-        guard role == "AXButton" else { return false }
-        let combined = (title + " " + description).lowercased()
-        return combined.contains("mute mic") || combined.contains("unmute mic")
+    static func isMicrophoneElement(
+        role: String,
+        domID: String,
+        title: String,
+        description: String,
+        help: String = "",
+        identifier: String = ""
+    ) -> Bool {
+        if domID == "microphone-button" || domID.contains("microphone-button") || domID == "mic-button" {
+            return true
+        }
+        if identifier == "microphone-button" || identifier.contains("microphone-button") || identifier == "mic-button" {
+            return true
+        }
+
+        let validRoles: Set<String> = [
+            "AXButton",
+            "AXPopUpButton",
+            "AXCheckBox",
+            "AXRadioButton",
+            "AXToggle",
+        ]
+        guard validRoles.contains(role) else { return false }
+
+        let combined = (title + " " + description + " " + help).lowercased()
+        if combined.contains("mute chat") || combined.contains("notifications") {
+            return false
+        }
+
+        // Teams keyboard shortcut: Cmd+Shift+M / Ctrl+Shift+M
+        if combined.contains("shift") && combined.contains("m") && (combined.contains("mute") || combined.contains("mic")) {
+            return true
+        }
+
+        // Common mute / unmute phrases for microphone
+        if combined.contains("mute mic") || combined.contains("unmute mic") { return true }
+        if combined.contains("mute microphone") || combined.contains("unmute microphone") { return true }
+        if combined.contains("turn off microphone") || combined.contains("turn on microphone") { return true }
+        if combined.contains("microphone is muted") || combined.contains("microphone is unmuted") { return true }
+        if combined.contains("mic is muted") || combined.contains("mic is unmuted") { return true }
+
+        // Short labels if mic or microphone is explicitly involved
+        if (combined.contains("mic") || combined.contains("microphone")) && (combined.contains("mute") || combined.contains("unmute")) {
+            return true
+        }
+
+        // Standalone "Mute" or "Unmute" button label on a call toolbar
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let d = description.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t == "mute" || t == "unmute" || d == "mute" || d == "unmute" {
+            return true
+        }
+
+        return false
     }
 
-    static func isMuted(title: String, description: String, help: String = "", value: String = "") -> Bool? {
+    static func isMuted(
+        title: String,
+        description: String,
+        help: String = "",
+        value: String = ""
+    ) -> Bool? {
         for raw in [title, description, help, value] {
             let text = raw.lowercased()
-            if text.contains("unmute") {
+            guard !text.isEmpty else { continue }
+
+            if text.contains("unmute")
+                || text.contains("turn on microphone")
+                || text.contains("microphone is muted")
+                || text.contains("mic is muted") {
                 return true
             }
-            if text.contains("mute mic") || text == "mute" {
+            if text.contains("mute")
+                || text.contains("turn off microphone")
+                || text.contains("microphone is on")
+                || text.contains("microphone is unmuted")
+                || text.contains("mic is on")
+                || text.contains("mic is unmuted") {
                 return false
             }
         }
@@ -472,6 +565,23 @@ enum TeamsAccessibilityMatcher {
     static func isMeetingWindow(title: String, subrole: String) -> Bool {
         if subrole == "AXSystemDialog" { return true }
         let lower = title.lowercased()
-        return lower.contains("meeting") || lower.contains("call") || lower.contains("meet now")
+        if lower.contains("meeting")
+            || lower.contains("call")
+            || lower.contains("meet now")
+            || lower.contains("compact view")
+            || lower.contains("ringing") {
+            return true
+        }
+        // Teams popped-out call/meeting windows have "<Subject/Contact> | Microsoft Teams"
+        // and do not represent main navigation tabs (Chat |, Teams |, Calendar |, Activity |).
+        if lower.contains("| microsoft teams") {
+            let isMainTab = lower.starts(with: "chat |")
+                || lower.starts(with: "teams |")
+                || lower.starts(with: "calendar |")
+                || lower.starts(with: "activity |")
+                || lower.starts(with: "calls |")
+            return !isMainTab
+        }
+        return false
     }
 }
