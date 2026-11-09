@@ -96,8 +96,8 @@ final class TeamsAccessibilityController: @unchecked Sendable {
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(
             deadline: .now(),
-            repeating: .milliseconds(350),
-            leeway: .milliseconds(120)
+            repeating: .milliseconds(150),
+            leeway: .milliseconds(50)
         )
         timer.setEventHandler { [weak self] in
             self?.tick()

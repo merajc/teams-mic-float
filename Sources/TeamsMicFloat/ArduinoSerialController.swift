@@ -25,7 +25,7 @@ final class ArduinoSerialController: @unchecked Sendable {
     /// Settle period after DTR reset upon opening port before processing toggle events
     private let settleDuration: TimeInterval = 2.0
     /// Minimum time between processed button toggles
-    private let debounceInterval: TimeInterval = 0.8
+    private let debounceInterval: TimeInterval = 0.3
 
     var statusDescription: String {
         if let port = currentPort, fd != nil {
