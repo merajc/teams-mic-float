@@ -67,7 +67,7 @@ to the app. It connects automatically; no restart is required.
 - Menu-bar mic icon provides status, mute toggle, refresh, Arduino connection status, permission help, and
   Quit.
 - Mute or unmute from Teams’ native UI or its `Shift+Cmd+M` shortcut; the
-  floating button follows within roughly 350 ms.
+  floating button follows within roughly 150 ms.
 
 ## Activate in future
 
@@ -99,7 +99,7 @@ to the app. It connects automatically; no restart is required.
 
 ## How it works
 
-`TeamsAccessibilityController` runs a low-overhead scan every 350 ms:
+`TeamsAccessibilityController` runs a low-overhead scan every 150 ms:
 
 1. Confirms macOS Accessibility trust.
 2. Finds Microsoft Teams by bundle identifier.
@@ -147,16 +147,46 @@ signing/                            Local signing certificate/keychain (gitignor
 Teams Mic Float includes a native USB serial controller (`ArduinoSerialController.swift`) that connects automatically to an attached Arduino (e.g. `/dev/cu.usbmodem*`) at 115200 baud with no external dependencies or daemons.
 
 - **Mute Toggle**: Pressing the button on the Arduino sends `TOGGLE`, which triggers `AXPress` to mute or unmute Teams.
-- **State Feedback**: When the mute state changes, the Mac sends `MUTED`, `UNMUTED`, or `OFF` to the Arduino to drive LEDs or matrix displays.
-- **Status in Menu**: The menu bar icon displays the live status: `Arduino: Connected (cu.usbmodem11301)`.
+- **State Feedback**: When the mute state changes, the Mac sends `MUTED`, `UNMUTED`, or `OFF` to the Arduino to drive the built-in LED and MAX7219 matrix display.
+- **Status in Menu**: The menu bar icon displays live status: `Arduino: Connected (cu.usbmodem11301)`.
+
+### Wiring & Pinout
+
+#### MAX7219 8x8 LED Matrix Display
+| MAX7219 Pin | Wire Color | Arduino Uno Pin | Description |
+|---|---|---|---|
+| **VCC** | Red | **5V** | Power |
+| **GND** | Brown | **GND** | Ground |
+| **DIN** | Green | **Pin 8** | SPI Data In |
+| **CS / LOAD** | Yellow | **Pin 9** | Chip Select |
+| **CLK** | Orange | **Pin 10** | Clock |
+
+#### Push Button
+- **External button (Recommended — <15ms latency)**: Connect any momentary tactile push button between **Pin 2** and **GND** (uses internal `INPUT_PULLUP`). Instant response without rebooting the board.
+- **Onboard button**: The physical button on the Uno is the hardware RESET button. The sketch detects reboot and sends `TOGGLE` on startup (~1.2s delay due to bootloader).
+
+### 8x8 LED Matrix Visual Themes
+
+Select the active theme in [`arduino/teams_mic_button/teams_mic_button.ino`](file:///Users/merajchhaya/Documents/GitHub/teams-mic-float/arduino/teams_mic_button/teams_mic_button.ino) via `#define THEME_SELECTION`:
+
+- **Theme 1**: Retro Microphone (Live) vs Slashed Microphone (Muted)
+- **Theme 2**: Status Letters (`ON` vs `M`)
+- **Theme 3 (Active Default)**: Checkmark (Live) vs Giant Cross `X` (Muted)
 
 ### Flashing the Arduino
 
 Compile and upload using `arduino-cli`:
 
 ```bash
+# Stop TeamsMicFloat before upload to release serial port
+killall TeamsMicFloat
+
+# Compile & Upload
 arduino-cli compile --fqbn arduino:avr:uno arduino/teams_mic_button
 arduino-cli upload  --fqbn arduino:avr:uno -p /dev/cu.usbmodem* arduino/teams_mic_button
+
+# Relaunch the app
+open dist/TeamsMicFloat.app
 ```
 
 ## Configuration
