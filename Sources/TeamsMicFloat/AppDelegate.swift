@@ -152,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.imagePosition = .imageOnly
             button.toolTip = "Teams Mic Float"
@@ -177,16 +177,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .syncing: symbol = "waveform"
         case .idle, .offline: symbol = "mic"
         }
-        let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+        let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
         if let image = NSImage(
             systemSymbolName: symbol,
             accessibilityDescription: "Teams microphone"
         ) {
-            button.image = image.withSymbolConfiguration(configuration)
+            let configured = image.withSymbolConfiguration(configuration) ?? image
+            switch visual {
+            case .muted:
+                configured.isTemplate = false
+                button.image = configured
+                button.contentTintColor = NSColor.systemRed
+            case .unmuted:
+                configured.isTemplate = false
+                button.image = configured
+                button.contentTintColor = NSColor.systemGreen
+            case .permission, .connecting, .pairing:
+                configured.isTemplate = false
+                button.image = configured
+                button.contentTintColor = NSColor.systemOrange
+            case .syncing:
+                configured.isTemplate = false
+                button.image = configured
+                button.contentTintColor = NSColor.systemYellow
+            case .idle, .offline:
+                // Template image with nil tint color ensures high-contrast white in Dark Mode
+                // and dark charcoal in Light Mode, exactly like system icons (Clock, Battery, WiFi).
+                configured.isTemplate = true
+                button.image = configured
+                button.contentTintColor = nil
+            }
         }
-        button.contentTintColor = NSColor(hex: visual.palette.ring)
         button.toolTip = "\(visual.statusTitle(state))\n\(visual.statusHint(state))"
-        button.appearsDisabled = (visual == .offline)
+        button.appearsDisabled = false
     }
 
     private func buildMenu(state: ClientState) -> NSMenu {
