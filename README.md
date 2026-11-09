@@ -73,7 +73,7 @@ to the app. It connects automatically; no restart is required.
 - Double-click `dist/TeamsMicFloat.app` in Finder, or run:
 
   ```bash
-  open "/Users/merajchhaya/Documents/Github/teams-mic-float/dist/TeamsMicFloat.app"
+  open "/Users/merajchhaya/Documents/GitHub/teams-mic-float/dist/TeamsMicFloat.app"
   ```
 
 - There is no Dock icon. Look for the floating mic button and the mic icon in
