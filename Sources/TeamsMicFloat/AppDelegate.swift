@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let options: AppOptions
     private var config: ConfigStore?
     private var controller: TeamsAccessibilityController?
+    private var arduinoController: ArduinoSerialController?
     private var panelController: FloatingPanelController?
     private var toastController: ToastController?
     private var statusItem: NSStatusItem?
@@ -52,8 +53,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         })
         self.toastController = toastController
 
+        let arduinoController = ArduinoSerialController()
+        self.arduinoController = arduinoController
+        arduinoController.onToggle = { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.controller?.requestPrimaryAction()
+            }
+        }
+        arduinoController.onStatusChanged = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                if let state = self?.controller?.state {
+                    self?.statusItem?.menu = self?.buildMenu(state: state)
+                }
+            }
+        }
+
         controller.onState = { [weak self] state in
             self?.apply(state)
+            if state.inMeeting {
+                self?.arduinoController?.send(state.muted ? "MUTED" : "UNMUTED")
+            } else {
+                self?.arduinoController?.send("OFF")
+            }
         }
         controller.onNotice = { [weak self] notice in
             self?.toastController?.show(
@@ -67,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController.show()
         apply(controller.state)
         controller.start()
+        arduinoController.start()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -93,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let controller, !terminating else { return .terminateNow }
         terminating = true
+        arduinoController?.stop()
         panelController?.savePosition()
         toastController?.hide()
         Task {
@@ -107,8 +130,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func systemDidWake() {
-        Log.info("System woke; refreshing the Teams accessibility connection")
+        Log.info("System woke; refreshing the Teams accessibility connection and Arduino")
         controller?.reconnect()
+        arduinoController?.reconnect()
     }
 
     // MARK: - UI updates
@@ -232,6 +256,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(help)
 
         menu.addItem(.separator())
+        if let arduino = arduinoController {
+            let arduinoItem = NSMenuItem(
+                title: arduino.statusDescription,
+                action: nil,
+                keyEquivalent: ""
+            )
+            arduinoItem.isEnabled = false
+            menu.addItem(arduinoItem)
+            menu.addItem(.separator())
+        }
         let quit = NSMenuItem(
             title: "Quit Teams Mic Float",
             action: #selector(quit),

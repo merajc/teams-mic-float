@@ -61,9 +61,10 @@ to the app. It connects automatically; no restart is required.
 ## Usage
 
 - **Click** the floating button to toggle the Teams microphone.
+- **Hardware button**: Press the button on the attached Arduino (or external button on Pin 2) to toggle the microphone via USB serial.
 - **Drag** it to reposition.
 - **Right-click** for the context menu.
-- Menu-bar mic icon provides status, mute toggle, refresh, permission help, and
+- Menu-bar mic icon provides status, mute toggle, refresh, Arduino connection status, permission help, and
   Quit.
 - Mute or unmute from Teams’ native UI or its `Shift+Cmd+M` shortcut; the
   floating button follows within roughly 350 ms.
@@ -119,6 +120,7 @@ used.
 Sources/TeamsMicFloat/
   main.swift                        Entry point and CLI parsing
   AppDelegate.swift                 Menu bar, menus, lifecycle
+  ArduinoSerialController.swift     Native USB serial listener & Arduino bridge
   FloatingPanelController.swift     Always-on-top non-activating NSPanel
   StatusView.swift                  Custom button drawing, click/drag, AXPress
   TeamsAccessibilityController.swift  Live Teams AX controller
@@ -127,6 +129,10 @@ Sources/TeamsMicFloat/
   ConfigStore.swift                 Window-position persistence
   ToastController.swift             Permission and status notifications
   AppOptions.swift                  CLI options
+arduino/
+  teams_mic_button/
+    teams_mic_button.ino            Arduino Uno firmware for button & LED
+arduino-serial.py                   Python helper for testing serial without deps
 Tests/TestHarness.swift             Dependency-free native test harness
 tools/mock_teams_server.py          Mock server for the legacy API tests
 scripts/build_app.sh                Builds dist/TeamsMicFloat.app
@@ -134,6 +140,23 @@ scripts/run.sh                      Launches the built app
 scripts/run_tests.sh                Builds and runs all native checks
 scripts/setup_signing.sh            Recreates the stable local signing identity
 signing/                            Local signing certificate/keychain (gitignored)
+```
+
+## Arduino hardware integration
+
+Teams Mic Float includes a native USB serial controller (`ArduinoSerialController.swift`) that connects automatically to an attached Arduino (e.g. `/dev/cu.usbmodem*`) at 115200 baud with no external dependencies or daemons.
+
+- **Mute Toggle**: Pressing the button on the Arduino sends `TOGGLE`, which triggers `AXPress` to mute or unmute Teams.
+- **State Feedback**: When the mute state changes, the Mac sends `MUTED`, `UNMUTED`, or `OFF` to the Arduino to drive LEDs or matrix displays.
+- **Status in Menu**: The menu bar icon displays the live status: `Arduino: Connected (cu.usbmodem11301)`.
+
+### Flashing the Arduino
+
+Compile and upload using `arduino-cli`:
+
+```bash
+arduino-cli compile --fqbn arduino:avr:uno arduino/teams_mic_button
+arduino-cli upload  --fqbn arduino:avr:uno -p /dev/cu.usbmodem* arduino/teams_mic_button
 ```
 
 ## Configuration
