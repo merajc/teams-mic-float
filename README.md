@@ -140,7 +140,7 @@ Connect an Arduino Uno over USB to toggle mute from your desk and display live s
 | **MAX7219 Matrix** | **CS / LOAD** | Yellow | **Pin 9** | Chip Select |
 | **MAX7219 Matrix** | **CLK** | Orange | **Pin 10** | Clock |
 | **Push Button** | Terminal 1 | Any | **Pin 2** | Uses internal `INPUT_PULLUP` (<15ms latency) |
-| **Push Button** | Terminal 2 | Any | **GND** | Ground |
+| **Push Button** | Terminal 2 | Any | **Pin 5** or **GND** | Pin 5 is driven LOW as GND sink (convenient adjacent wiring); board GND pin also works |
 
 ### Matrix Visual Themes
 

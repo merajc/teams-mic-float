@@ -2,7 +2,7 @@
 // Communicates with TeamsMicFloat on macOS via USB Serial (115200 baud)
 
 // --- Pin Definitions ---
-const int BUTTON_PIN = 2;   // External push button (wired between Pin 2 and GND)
+const int BUTTON_PIN = 2;   // External push button input (Pin 2 with INPUT_PULLUP)
 const int LED_PIN    = 13;  // Built-in LED on Pin 13
 
 // MAX7219 8x8 LED Matrix Pins
@@ -146,14 +146,47 @@ void initMatrix() {
   displayBitmap(BITMAP_IDLE);
 }
 
+// --- Ground Sink Pins ---
+// Pins 3, 4, and 5 are driven LOW so that a button wired between Pin 2 and ANY adjacent pin
+// (including Pin 5, Pin 4, or regular GND) immediately works with zero fuss.
+const int GND_SINK_PINS[] = {3, 4, 5};
+const int NUM_GND_SINKS = 3;
+
 // --- Button Debouncing State ---
 int lastButtonReading = HIGH;
-int buttonState = HIGH;
-unsigned long lastDebounceTime = 0;
-const unsigned long DEBOUNCE_DELAY = 15; // ms (fast, responsive)
+unsigned long lastToggleTime = 0;
+const unsigned long BUTTON_LOCKOUT_MS = 250; // Prevents contact bounce (<1ms instant response)
+
+// --- Non-Blocking Serial Buffer & State ---
+String serialBuffer = "";
+bool isMuted = false;
+
+void handleCommand(const String& cmd) {
+  if (cmd == "MUTED") {
+    isMuted = true;
+    digitalWrite(LED_PIN, HIGH);
+    displayBitmap(BITMAP_MUTED);
+  } else if (cmd == "UNMUTED") {
+    isMuted = false;
+    digitalWrite(LED_PIN, LOW);
+    displayBitmap(BITMAP_UNMUTED);
+  } else if (cmd == "OFF" || cmd == "IDLE") {
+    isMuted = false;
+    digitalWrite(LED_PIN, LOW);
+    displayBitmap(BITMAP_IDLE);
+  } else if (cmd == "PING") {
+    Serial.println("PONG");
+  }
+}
 
 void setup() {
   Serial.begin(115200);
+
+  // Configure Pins 3, 4, and 5 as ground sinks (LOW)
+  for (int i = 0; i < NUM_GND_SINKS; i++) {
+    pinMode(GND_SINK_PINS[i], OUTPUT);
+    digitalWrite(GND_SINK_PINS[i], LOW);
+  }
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
@@ -167,38 +200,31 @@ void setup() {
 }
 
 void loop() {
-  // 1. Check external button on Pin 2 (instant <15ms response)
+  // 1. Instant Edge-Triggered Button Sensing (<1ms response, 250ms lockout)
   int reading = digitalRead(BUTTON_PIN);
-  if (reading != lastButtonReading) {
-    lastDebounceTime = millis();
-  }
+  unsigned long now = millis();
 
-  if ((millis() - lastDebounceTime) > DEBOUNCE_DELAY) {
-    if (reading != buttonState) {
-      buttonState = reading;
-      if (buttonState == LOW) { // Button pressed (active LOW)
-        Serial.println("TOGGLE");
-      }
-    }
+  if (reading == LOW && lastButtonReading == HIGH && (now - lastToggleTime > BUTTON_LOCKOUT_MS)) {
+    lastToggleTime = now;
+    digitalWrite(LED_PIN, HIGH); // Visual feedback on click
+    Serial.println("TOGGLE");
+  } else if (reading == HIGH && lastButtonReading == LOW) {
+    // Restore LED state to mute status once button is released
+    digitalWrite(LED_PIN, isMuted ? HIGH : LOW);
   }
   lastButtonReading = reading;
 
-  // 2. Process incoming state commands from TeamsMicFloat
-  if (Serial.available() > 0) {
-    String line = Serial.readStringUntil('\n');
-    line.trim();
-
-    if (line == "MUTED") {
-      digitalWrite(LED_PIN, HIGH);
-      displayBitmap(BITMAP_MUTED);
-    } else if (line == "UNMUTED") {
-      digitalWrite(LED_PIN, LOW);
-      displayBitmap(BITMAP_UNMUTED);
-    } else if (line == "OFF" || line == "IDLE") {
-      digitalWrite(LED_PIN, LOW);
-      displayBitmap(BITMAP_IDLE);
-    } else if (line == "PING") {
-      Serial.println("PONG");
+  // 2. Non-blocking Serial Command Processing (never stalls button loop)
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+    if (c == '\n') {
+      serialBuffer.trim();
+      if (serialBuffer.length() > 0) {
+        handleCommand(serialBuffer);
+      }
+      serialBuffer = "";
+    } else if (c != '\r') {
+      serialBuffer += c;
     }
   }
 }
